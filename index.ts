@@ -124,229 +124,235 @@ function gpxTitle(v: string): string {
   return r;
 }
 
-function togpx(geojson: GeoJSON, o?: any) {
-  const options = (function (defaults: any, options: any) {
-    for (var k in defaults) {
-      if (options.hasOwnProperty(k)) defaults[k] = options[k];
-    }
-    return defaults;
-  })(
-    {
-      metadata: undefined,
-      featureLink: undefined,
-    },
-    o || {}
-  );
+export function getCounties(geojson: GeoJSON) {
+  var features: GeoJSON.Feature[];
+  if (geojson.type === "FeatureCollection") features = geojson.features;
+  else if (geojson.type === "Feature") features = [geojson];
+  else features = [{ type: "Feature", properties: {}, geometry: geojson }];
 
-  function get_feature_title(props: null | FeatureProps): string {
-    const titleSeq = [/* "ha",  "har", */ "county", "name"];
-
-    // a simple default heuristic to determine a title for a given feature
-    // uses a nested `tags` object or the feature's `properties` if present
-    // and then searchs for the following properties to construct a title:
-    // `name`, `ref`, `id`
-    if (!props) return "";
-    if (typeof props.tags === "object") {
-      var tags_title = get_feature_title(props.tags);
-      if (tags_title !== "") return tags_title;
+  const counties: { [key: string]: boolean } = {};
+  features.forEach(function mapFeature(f) {
+    if (f.properties?.county.length) {
+      counties[f.properties?.county] = true;
     }
-    if (props.ref) return props.ref;
-    if (props.id) return props.id;
+  });
 
-    var res = "";
-    for (const k of titleSeq) {
-      let output = "";
-      if (typeof props[k] === "object") continue;
-      const v = sanitise(props[k].toString());
-      if (!v.length) continue;
-      switch (k) {
-        case "name": // this has a dedicated prop
-          output = v;
-          break;
-        case "type":
-        case "no_through_route":
-        case "membermessage":
-        case "desc":
-        case "historical":
-        case "grmuid":
-        case "usrn":
-        case "ha":
-          output = v;
-          break;
-        case "har":
-          output = v;
-          break;
-        case "county":
-          output = v;
-          break;
-        case "color":
-        case "length":
-          // ignore these
-          break;
-        default:
-          output = `${k}=${v}`;
-          console.error(`Unknown key ${k}=${v}`);
-          break;
-      }
-      if (output.length > 0) {
-        if (res.length > 0) {
-          res = `${res} | ${output}`;
-        } else {
-          res = `${output}`;
-        }
-      }
-    }
-    return gpxTitle(res);
+  for (const county in counties) {
+    console.info(
+      `{county: "${county}", output: "${county
+        .toLowerCase()
+        .replace(" ", "_")}"},`
+    );
   }
 
-  function get_feature_colour(
-    props: null | FeatureProps
-  ): undefined | GarminColour {
-    if (!USE_GARMIN_COLOURS) {
-      return undefined;
+  return counties;
+}
+
+function get_feature_title(props: null | FeatureProps): string {
+  const titleSeq = [/* "ha",  "har", */ "county", "name"];
+
+  // a simple default heuristic to determine a title for a given feature
+  // uses a nested `tags` object or the feature's `properties` if present
+  // and then searchs for the following properties to construct a title:
+  // `name`, `ref`, `id`
+  if (!props) return "";
+  var res = "";
+  for (const k of titleSeq) {
+    let output = "";
+    if (typeof props[k] === "object") continue;
+    const v = sanitise(props[k].toString());
+    if (!v.length) continue;
+    switch (k) {
+      case "name": // this has a dedicated prop
+        output = v;
+        break;
+      case "type":
+      case "no_through_route":
+      case "membermessage":
+      case "desc":
+      case "historical":
+      case "grmuid":
+      case "usrn":
+      case "ha":
+        output = v;
+        break;
+      case "har":
+        output = v;
+        break;
+      case "county":
+        output = v;
+        break;
+      case "color":
+      case "length":
+        // ignore these
+        break;
+      default:
+        output = `${k}=${v}`;
+        console.error(`Unknown key ${k}=${v}`);
+        break;
     }
-    if (!props) return undefined;
-    for (var k in props) {
-      if (typeof props[k] === "object") continue;
-      if (k === "color") {
-        const v = props[k].toString().trim();
-        switch (v) {
-          case "green":
-            return "Green";
-          case "red":
-            return "Red";
-          case "blue":
-            return "Blue";
-          case "grey":
-            return "LightGray";
-          default:
-            console.error(`Unknown color ${v}`);
-            return undefined;
-        }
+    if (output.length > 0) {
+      if (res.length > 0) {
+        res = `${res} | ${output}`;
+      } else {
+        res = `${output}`;
       }
     }
+  }
+  return gpxTitle(res);
+}
+
+function get_feature_colour(
+  props: null | FeatureProps
+): undefined | GarminColour {
+  if (!USE_GARMIN_COLOURS) {
     return undefined;
   }
-
-  function get_feature_description(props: null | FeatureProps) {
-    // constructs a description for a given feature
-    // uses a nested `tags` object or the feature's `properties` if present
-    // and then concatenates all properties to construct a description.
-    if (!props) return "";
-    if (typeof props.tags === "object")
-      return get_feature_description(props.tags);
-    var res = "";
-    for (var k in props) {
-      let output = "";
-      if (typeof props[k] === "object") continue;
-      const v = sanitise(props[k].toString());
-      if (!v.length) continue;
-      switch (k) {
-        case "name": // this has a dedicated prop
-          // output = `${v}`;
-          break;
-        case "type":
-          if (v !== "2") {
-            output = `${k}=${v}`;
-            console.error(`Unknown type ${v}`);
-          }
-          break;
-        case "no_through_route":
-          if (v === "1") {
-            output = `No Through Route`;
-          }
-          break;
-        case "membermessage":
-          if (v !== "Message for members map") {
-            output = `${v}`;
-          }
-          break;
-        case "desc":
-          if (v !== "Demo testing one.") {
-            output = `${v}`;
-          }
-          break;
-        case "class":
-          switch (v) {
-            case "disputed":
-              output = `**DISPUTED**`;
-              break;
-            case "temporary_tro":
-              output = `**TEMPORARY TRO**`;
-              break;
-            case "full-access":
-              // this is assumed -  output = `Full Access\n`;
-              break;
-            case "partial-access":
-              output = `Partial Access`;
-              break;
-            case "restricted":
-              output = `Restricted`;
-              break;
-            case "link_road_with_access":
-              output = `Link road with access`;
-              break;
-            default:
-              output = `${k}=${v}\n`;
-              console.error(`Unknown class ${v}`);
-              break;
-          }
-          break;
-        case "historical":
-          output = `Known as ${v}`;
-          break;
-        case "grmuid":
-        case "usrn":
-        case "ha":
-        case "har":
-        case "county":
-        case "color":
-        case "length":
-          // ignore these
-          break;
+  if (!props) return undefined;
+  for (var k in props) {
+    if (typeof props[k] === "object") continue;
+    if (k === "color") {
+      const v = props[k].toString().trim();
+      switch (v) {
+        case "green":
+          return "Green";
+        case "red":
+          return "Red";
+        case "blue":
+          return "Blue";
+        case "grey":
+          return "LightGray";
         default:
-          output = `${k}=${v}`;
-          console.error(`Unknown key ${k}=${v}`);
-          break;
-      }
-      if (output.length > 0) {
-        if (res.length > 0) {
-          res = `${res}. ${output}`;
-        } else {
-          res = `${output}`;
-        }
+          console.error(`Unknown color ${v}`);
+          return undefined;
       }
     }
-    return `${res}`;
   }
-  function get_feature_coord_times(feature: GeoJSON.Feature) {
-    if (!feature.properties) return null;
-    return feature.properties.times || feature.properties.coordTimes || null;
-  }
-  function add_feature_link(o: GpxTrack, f: GeoJSON.Feature) {
-    if (options.featureLink)
-      o.link = { "@href": options.featureLink(f.properties) };
-  }
+  return undefined;
+}
 
-  function getFeatureProps(f: GeoJSON.Feature): GpxTrack {
-    const color = get_feature_colour(f.properties);
-    // Order of these is important for export time, trkseg MUST be last
-    const o: GpxTrack = {
-      name: get_feature_title(f.properties),
-      desc: get_feature_description(f.properties),
-      src: "TRF Green Roadmap - 2023-10-03",
-      link: { "@href": "https://beta.greenroadmap.org.uk/" },
-    };
-    if (color) {
-      o.extensions = {
-        "gpxx:TrackExtension": {
-          "gpxx:DisplayColor": color,
-        },
-      };
+function get_feature_description(props: null | FeatureProps) {
+  // constructs a description for a given feature
+  // uses a nested `tags` object or the feature's `properties` if present
+  // and then concatenates all properties to construct a description.
+  if (!props) return "";
+  if (typeof props.tags === "object")
+    return get_feature_description(props.tags);
+  var res = "";
+  for (var k in props) {
+    let output = "";
+    if (typeof props[k] === "object") continue;
+    const v = sanitise(props[k].toString());
+    if (!v.length) continue;
+    switch (k) {
+      case "name": // this has a dedicated prop
+        // output = `${v}`;
+        break;
+      case "type":
+        if (v !== "2") {
+          output = `${k}=${v}`;
+          console.error(`Unknown type ${v}`);
+        }
+        break;
+      case "no_through_route":
+        if (v === "1") {
+          output = `No Through Route`;
+        }
+        break;
+      case "membermessage":
+        if (v !== "Message for members map") {
+          output = `${v}`;
+        }
+        break;
+      case "desc":
+        if (v !== "Demo testing one.") {
+          output = `${v}`;
+        }
+        break;
+      case "class":
+        switch (v) {
+          case "disputed":
+            output = `**DISPUTED**`;
+            break;
+          case "temporary_tro":
+            output = `**TEMPORARY TRO**`;
+            break;
+          case "full-access":
+            // this is assumed -  output = `Full Access\n`;
+            break;
+          case "partial-access":
+            output = `Partial Access`;
+            break;
+          case "restricted":
+            output = `Restricted`;
+            break;
+          case "link_road_with_access":
+            output = `Link road with access`;
+            break;
+          default:
+            output = `${k}=${v}\n`;
+            console.error(`Unknown class ${v}`);
+            break;
+        }
+        break;
+      case "historical":
+        output = `Known as ${v}`;
+        break;
+      case "grmuid":
+      case "usrn":
+      case "ha":
+      case "har":
+      case "county":
+      case "color":
+      case "length":
+        // ignore these
+        break;
+      default:
+        output = `${k}=${v}`;
+        console.error(`Unknown key ${k}=${v}`);
+        break;
     }
-    o.trkseg = []; // TRK seg must be last
-    return o;
+    if (output.length > 0) {
+      if (res.length > 0) {
+        res = `${res}. ${output}`;
+      } else {
+        res = `${output}`;
+      }
+    }
   }
+  return `${res}`;
+}
+function get_feature_coord_times(feature: GeoJSON.Feature) {
+  if (!feature.properties) return null;
+  return feature.properties.times || feature.properties.coordTimes || null;
+}
+
+function getFeatureProps(f: GeoJSON.Feature): GpxTrack {
+  const color = get_feature_colour(f.properties);
+  // Order of these is important for export time, trkseg MUST be last
+  const o: GpxTrack = {
+    name: get_feature_title(f.properties),
+    desc: get_feature_description(f.properties),
+    src: "TRF Green Roadmap - 2023-10-03",
+    link: { "@href": "https://beta.greenroadmap.org.uk/" },
+  };
+  if (color) {
+    o.extensions = {
+      "gpxx:TrackExtension": {
+        "gpxx:DisplayColor": color,
+      },
+    };
+  }
+  o.trkseg = []; // TRK seg must be last
+  return o;
+}
+
+export function togpx(geojson: GeoJSON, county?: string) {
+  const options = {
+    metadata: undefined,
+    featureLink: undefined,
+    filterCounty: county,
+  };
 
   // make gpx object
 
@@ -383,7 +389,6 @@ function togpx(geojson: GeoJSON, o?: any) {
     },
   };
 
-  if (options.creator) gpx.gpx["@creator"] = options.creator;
   if (options.metadata) gpx.gpx["metadata"] = options.metadata;
   else delete options.metadata;
 
@@ -394,6 +399,12 @@ function togpx(geojson: GeoJSON, o?: any) {
 
   // let count = 0;
   features.forEach(function mapFeature(f) {
+    if (
+      options.filterCounty?.length &&
+      f.properties?.county !== options.filterCounty
+    ) {
+      return;
+    }
     // count = count + 1;
     // if (count > 1) {
     //   return;
@@ -419,7 +430,6 @@ function togpx(geojson: GeoJSON, o?: any) {
             if (coordinates[2] !== undefined) {
               o.ele = coordinates[2];
             }
-            add_feature_link(o, f);
             gpx.gpx.wpt.push(o);
           });
         }
@@ -437,7 +447,6 @@ function togpx(geojson: GeoJSON, o?: any) {
           }
 
           const o: GpxTrack = getFeatureProps(f);
-          add_feature_link(o, f);
           coords.forEach(function (coordinates) {
             var seg: GpxTrackSegment = { trkpt: [] };
             coordinates.forEach(function (c, i) {
@@ -463,7 +472,6 @@ function togpx(geojson: GeoJSON, o?: any) {
       case "MultiPolygon":
         {
           const o: GpxTrack = getFeatureProps(f);
-          add_feature_link(o, f);
           var times = get_feature_coord_times(f);
           let coords: GeoJSON.Position[][][];
 
@@ -520,5 +528,3 @@ function togpx(geojson: GeoJSON, o?: any) {
   const xmlContent = builder.build(gpx);
   return xmlContent;
 }
-
-export default togpx;
